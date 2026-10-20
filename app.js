@@ -534,7 +534,7 @@ window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", render);
 window.addEventListener("hashchange", saveRouteState);
 window.addEventListener("pagehide", saveRouteState);
-window.addEventListener("visibilitychange", () => {
+document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     saveRouteState();
   }
