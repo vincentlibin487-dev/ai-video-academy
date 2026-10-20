@@ -125,15 +125,12 @@ const pages = {
     aside: "AI Tooling collection",
   },
   "ai-scripts": {
-    title: "AI Scripts and Captions Hub",
-    heading: "AI Scripts and Captions Hub",
-    description: "A dedicated guide page for shaping video ideas into scripts and captions.",
+    title: "AI Script & Caption Hub",
+    heading: "AI Script & Caption Hub",
+    description: "Write, save, and organize your video scripts and prompts.",
     category: "Video Academy · writing",
     parent: "video-academy",
     icon: "Aa",
-    detailTitle: "Start with a clear story",
-    detail: "Build a strong foundation for your video with a focused script and captions that support the story. This page is part of the Hub & Guides section.",
-    aside: "Hub & Guides",
   },
   "video-editing-tips": {
     title: "Video Editing Tips",
@@ -248,12 +245,6 @@ const childCards = {
 };
 
 const academyGuides = {
-  "ai-scripts": [
-    ["script-idea-hooks", "Find an Idea and Hook", "Start with one clear audience need, then shape the idea into a short opening that earns attention."],
-    ["script-story-structure", "Build a Clear Story", "Organize the message into a strong opening, a useful middle, and a satisfying final beat."],
-    ["script-ai-drafting", "Draft with AI", "Use an AI writing assistant to explore angles and create a first draft, then edit it into your own voice."],
-    ["script-captions", "Captions and Subtitles", "Write readable captions, check timing, and make the key message easy to follow with or without sound."],
-  ],
   "video-editing-tips": [
     ["editing-workflow", "Editing Workflow Basics", "Sort and review your footage, assemble the strongest moments, then refine the cut before export."],
     ["editing-pacing", "Cuts, Pacing and Transitions", "Use intentional cuts and steady pacing to guide attention; keep transitions focused on the story."],
@@ -290,7 +281,13 @@ for (const [parentKey, guides] of Object.entries(academyGuides)) {
 const app = document.querySelector("#app");
 const savedRouteKey = "aivideoacademy:last-route";
 const savedScrollKey = "aivideoacademy:last-scroll";
+const scriptDraftStorageKey = "aivideoacademy:script-workspace";
+const scriptImagesDatabase = "aivideoacademy-script-images";
+const scriptImagesStore = "attachments";
 let routeStateSaveTimer;
+let scriptWorkspaceDraft = { title: "", script: "", attachments: [] };
+let scriptWorkspaceReady = false;
+let scriptImageStorageReady = false;
 const cardSections = {
   "ai-tooling": "AI tools",
   "video-academy": "Academy guides",
@@ -427,6 +424,259 @@ function videoAcademyMarkup() {
     </section>`;
 }
 
+function scriptWorkspaceMarkup() {
+  return `
+    <section class="script-workspace" aria-labelledby="script-workspace-title">
+      <a class="script-workspace-back" href="${routeHref("video-academy")}">
+        <span aria-hidden="true">←</span> Back to Video Academy
+      </a>
+      <header class="script-workspace-heading">
+        <h1 id="script-workspace-title">AI Script &amp; Caption Hub</h1>
+        <p>Saved in this browser only. Browser storage is not encrypted; avoid sensitive content.</p>
+      </header>
+      <form class="script-workspace-form">
+        <label class="workspace-field">
+          <span>Title</span>
+          <input name="title" type="text" maxlength="160" placeholder="Give your script a title" autocomplete="off" disabled>
+        </label>
+        <label class="workspace-field">
+          <span>Script / Prompt</span>
+          <textarea name="script" rows="12" placeholder="Write your script, caption, or AI prompt here..." disabled></textarea>
+        </label>
+        <div class="workspace-field">
+          <span id="script-image-label">Related images</span>
+          <label class="workspace-upload" for="script-image-input">
+            <span aria-hidden="true">＋</span> Attach images
+            <input id="script-image-input" name="images" type="file" accept="image/*" multiple aria-labelledby="script-image-label" disabled>
+          </label>
+          <div class="workspace-attachments" aria-live="polite"></div>
+        </div>
+        <div class="workspace-actions">
+          <button class="workspace-save" type="submit" disabled>Save script</button>
+          <p class="workspace-status" role="status" aria-live="polite">Loading your saved workspace…</p>
+        </div>
+      </form>
+    </section>`;
+}
+
+function openScriptImagesDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(scriptImagesDatabase, 1);
+    request.onupgradeneeded = () => {
+      const database = request.result;
+      if (!database.objectStoreNames.contains(scriptImagesStore)) {
+        database.createObjectStore(scriptImagesStore, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open image storage."));
+  });
+}
+
+function readScriptImages(database) {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(scriptImagesStore, "readonly");
+    const request = transaction.objectStore(scriptImagesStore).getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not load saved images."));
+  });
+}
+
+function writeScriptImages(database, attachments) {
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(scriptImagesStore, "readwrite");
+    const store = transaction.objectStore(scriptImagesStore);
+    store.clear();
+    for (const { id, name, type, blob } of attachments) {
+      store.put({ id, name, type, blob });
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not save image attachments."));
+    transaction.onabort = () => reject(transaction.error || new Error("Saving image attachments was cancelled."));
+  });
+}
+
+function setWorkspaceStatus(message, isError = false) {
+  const status = app.querySelector(".workspace-status");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-error", isError);
+  status.setAttribute("role", isError ? "alert" : "status");
+}
+
+function renderScriptAttachments() {
+  const container = app.querySelector(".workspace-attachments");
+  if (!container) return;
+
+  container.replaceChildren();
+  for (const attachment of scriptWorkspaceDraft.attachments) {
+    const item = document.createElement("div");
+    item.className = "workspace-attachment";
+
+    const image = document.createElement("img");
+    image.alt = attachment.name;
+    attachment.objectUrl ||= URL.createObjectURL(attachment.blob);
+    image.src = attachment.objectUrl;
+
+    const name = document.createElement("span");
+    name.className = "workspace-attachment-name";
+    name.textContent = attachment.name;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "workspace-remove";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${attachment.name}`);
+    remove.addEventListener("click", () => {
+      URL.revokeObjectURL(attachment.objectUrl);
+      scriptWorkspaceDraft.attachments = scriptWorkspaceDraft.attachments
+        .filter((entry) => entry.id !== attachment.id);
+      renderScriptAttachments();
+      setWorkspaceStatus("Image removed. Save your script to keep this change.");
+    });
+
+    item.append(image, name, remove);
+    container.append(item);
+  }
+}
+
+async function initializeScriptWorkspace() {
+  const form = app.querySelector(".script-workspace-form");
+  if (!form) return;
+
+  scriptWorkspaceReady = false;
+  const titleInput = form.elements.namedItem("title");
+  const scriptInput = form.elements.namedItem("script");
+  const fileInput = form.elements.namedItem("images");
+  const saveButton = form.querySelector(".workspace-save");
+  let hasSavedDraft = false;
+
+  try {
+    const savedDraft = window.localStorage.getItem(scriptDraftStorageKey);
+    hasSavedDraft = Boolean(savedDraft);
+    if (savedDraft) {
+      const parsedDraft = JSON.parse(savedDraft);
+      if (typeof parsedDraft.title !== "string" || typeof parsedDraft.script !== "string") {
+        throw new Error("The saved script has an unexpected format.");
+      }
+      scriptWorkspaceDraft.title = parsedDraft.title;
+      scriptWorkspaceDraft.script = parsedDraft.script;
+    } else {
+      scriptWorkspaceDraft = { title: "", script: "", attachments: [] };
+    }
+  } catch (error) {
+    console.error("Unable to load the script workspace.", error);
+    setWorkspaceStatus("Could not load saved data. Check browser storage settings and reload.", true);
+    saveButton.disabled = true;
+    fileInput.disabled = true;
+    return;
+  }
+
+  titleInput.value = scriptWorkspaceDraft.title;
+  scriptInput.value = scriptWorkspaceDraft.script;
+  try {
+    const database = await openScriptImagesDatabase();
+    if (routeKey() !== "ai-scripts" || !app.contains(form)) {
+      database.close();
+      return;
+    }
+    try {
+      scriptWorkspaceDraft.attachments = await readScriptImages(database);
+    } finally {
+      database.close();
+    }
+    scriptImageStorageReady = true;
+  } catch (error) {
+    console.error("Unable to load script image attachments.", error);
+    scriptWorkspaceDraft.attachments = [];
+    scriptImageStorageReady = false;
+  }
+  if (routeKey() !== "ai-scripts" || !app.contains(form)) return;
+
+  scriptWorkspaceReady = true;
+  titleInput.disabled = false;
+  scriptInput.disabled = false;
+  saveButton.disabled = false;
+  fileInput.disabled = !scriptImageStorageReady;
+  renderScriptAttachments();
+  setWorkspaceStatus(scriptImageStorageReady
+    ? (hasSavedDraft ? "Your saved script is ready." : "Your script is saved only when you select Save.")
+    : "Text saving is available, but this browser could not open image storage.", !scriptImageStorageReady);
+
+  titleInput.addEventListener("input", () => {
+    scriptWorkspaceDraft.title = titleInput.value;
+  });
+  scriptInput.addEventListener("input", () => {
+    scriptWorkspaceDraft.script = scriptInput.value;
+  });
+  fileInput.addEventListener("change", () => {
+    const files = Array.from(fileInput.files || []);
+    const invalidFile = files.find((file) => !file.type.startsWith("image/"));
+    if (invalidFile) {
+      setWorkspaceStatus("Only image files can be attached.", true);
+      fileInput.value = "";
+      return;
+    }
+    for (const file of files) {
+      scriptWorkspaceDraft.attachments.push({
+        id: window.crypto.randomUUID
+          ? window.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        name: file.name,
+        type: file.type,
+        blob: file,
+      });
+    }
+    fileInput.value = "";
+    renderScriptAttachments();
+    if (files.length) setWorkspaceStatus("Images attached. Save your script to keep them.");
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!scriptWorkspaceReady) return;
+    saveButton.disabled = true;
+    try {
+      scriptWorkspaceDraft.title = titleInput.value;
+      scriptWorkspaceDraft.script = scriptInput.value;
+      window.localStorage.setItem(scriptDraftStorageKey, JSON.stringify({
+        title: scriptWorkspaceDraft.title,
+        script: scriptWorkspaceDraft.script,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.error("Unable to save the script text.", error);
+      setWorkspaceStatus("Could not save your script. Check browser storage space and permissions.", true);
+      saveButton.disabled = false;
+      return;
+    }
+    if (scriptImageStorageReady) {
+      let database;
+      try {
+        database = await openScriptImagesDatabase();
+      } catch (error) {
+        console.error("Unable to open image storage while saving.", error);
+        setWorkspaceStatus("Your script text was saved, but image storage could not be opened.", true);
+        saveButton.disabled = false;
+        return;
+      }
+      try {
+        await writeScriptImages(database, scriptWorkspaceDraft.attachments);
+      } catch (error) {
+        console.error("Unable to save script image attachments.", error);
+        setWorkspaceStatus("Your script text was saved, but image attachments could not be saved.", true);
+        saveButton.disabled = false;
+        return;
+      } finally {
+        database.close();
+      }
+    }
+    setWorkspaceStatus(scriptImageStorageReady
+      ? "Saved on this device."
+      : "Script saved on this device; image storage is unavailable.");
+    saveButton.disabled = false;
+  });
+}
+
 function academyTopicMarkup(key) {
   const page = pages[key];
   const guides = academyGuides[key];
@@ -512,6 +762,13 @@ function pageMarkup(key) {
 function render() {
   const key = routeKey();
   const page = pages[key];
+  if (key !== "ai-scripts") {
+    for (const attachment of scriptWorkspaceDraft.attachments) {
+      if (attachment.objectUrl) URL.revokeObjectURL(attachment.objectUrl);
+    }
+    scriptWorkspaceReady = false;
+    scriptImageStorageReady = false;
+  }
   app.innerHTML = key === "home"
     ? homeMarkup()
     : key === "main"
@@ -520,6 +777,8 @@ function render() {
         ? videoGeneratingMarkup()
         : key === "video-academy"
           ? videoAcademyMarkup()
+          : key === "ai-scripts"
+            ? scriptWorkspaceMarkup()
           : academyGuides[key]
             ? academyTopicMarkup(key)
             : page.guideDetail
@@ -531,8 +790,9 @@ function render() {
   document.body.classList.toggle("academy-page", key === "video-academy");
   document.body.classList.toggle("academy-topic-page", Boolean(academyGuides[key]));
   document.body.classList.toggle("academy-detail-page", Boolean(page.guideDetail));
+  document.body.classList.toggle("script-workspace-page", key === "ai-scripts");
   const headerAction = document.querySelector(".header-cta");
-  if (key === "main" || key === "ai-tooling" || key === "video-academy" || academyGuides[key] || page.guideDetail) {
+  if (key === "main" || key === "ai-tooling" || key === "video-academy" || key === "ai-scripts" || academyGuides[key] || page.guideDetail) {
     const backKey = key === "main" ? "home" : page.parent;
     headerAction.href = routeHref(backKey);
     headerAction.setAttribute("aria-label", `Back to ${pages[backKey].title}`);
@@ -545,6 +805,7 @@ function render() {
   document.title = key === "home"
     ? "AI Video Academy"
     : `${page.title} — Aivideoacademy`;
+  if (key === "ai-scripts") initializeScriptWorkspace();
 }
 
 window.addEventListener("hashchange", render);
