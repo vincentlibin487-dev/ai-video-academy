@@ -29,9 +29,9 @@ const pages = {
     parent: "main",
     icon: "✳",
     detailTitle: "Find a tool for your next idea",
-    detail: "Browse the dedicated pages for Kling AI, GenSpark, PixVerse, Pika Labs, and Lova AI. Select any tool to see its overview.",
-    aside: "5 tools to explore",
-    children: ["kling-ai", "genspark", "pixverse", "pika-labs", "lova-ai"],
+    detail: "Browse the official platforms for Kling AI, GenSpark, PixVerse, Pika Labs, Luma AI, and Flow.",
+    aside: "6 tools to explore",
+    children: ["kling-ai", "genspark", "pixverse", "pika-labs", "luma-ai", "flow"],
   },
   "video-academy": {
     title: "Video Creator Class",
@@ -102,15 +102,15 @@ const pages = {
     detail: "A dedicated page for Pika Labs. Return to AI Tooling to discover the other video creation tools.",
     aside: "AI Tooling collection",
   },
-  "lova-ai": {
-    title: "Lova AI",
-    heading: "Lova AI",
-    description: "Explore the Lova AI page in the Aivideoacademy AI tooling collection.",
+  "luma-ai": {
+    title: "Luma AI",
+    heading: "Luma AI",
+    description: "Explore the Luma AI page in the Aivideoacademy AI tooling collection.",
     category: "AI tool · video creation",
     parent: "ai-tooling",
     icon: "L",
-    detailTitle: "Explore the Lova AI workflow",
-    detail: "A dedicated page for Lova AI in the AI Tooling section. Use the Back button to return to all tools.",
+    detailTitle: "Explore Luma AI",
+    detail: "A dedicated page for Luma AI in the AI Tooling section. Use the Back button to return to all tools.",
     aside: "AI Tooling collection",
   },
   flow: {
@@ -230,7 +230,7 @@ const childCards = {
     ["genspark", "GenSpark", "Discover a new creative workflow with GenSpark.", "G"],
     ["pixverse", "PixVerse", "Explore a dedicated page for PixVerse video creation.", "P"],
     ["pika-labs", "Pika Labs", "Find inspiration and ideas for your next Pika Labs project.", "P"],
-    ["lova-ai", "Lova AI", "Explore Lova AI in the AI tooling collection.", "L"],
+    ["luma-ai", "Luma AI", "Explore Luma AI in the AI tooling collection.", "L"],
   ],
   "video-academy": [
     ["ai-scripts", "AI Scripts and Captions Hub", "Shape your idea into a story, script, and captions.", "Aa"],
@@ -342,19 +342,19 @@ function mainMarkup() {
 
 function videoGeneratingMarkup() {
   const tools = [
-    ["kling-ai", "Kling AI"],
-    ["genspark", "GenSpark"],
-    ["pixverse", "PixVerse"],
-    ["pika-labs", "Pika Labs"],
-    ["lova-ai", "Lova AI"],
-    ["flow", "Flow"],
+    ["Kling AI", "https://klingai.com/"],
+    ["GenSpark", "https://www.genspark.ai/"],
+    ["PixVerse", "https://app.pixverse.ai/"],
+    ["Pika Labs", "https://pika.art/"],
+    ["Luma AI", "https://lumalabs.ai/dream-machine"],
+    ["Flow", "https://flow.google/"],
   ];
   return `
     <section class="tooling-page" aria-labelledby="tooling-title">
       <h1 id="tooling-title">Video Generating</h1>
       <nav class="tool-list" aria-label="Video generation tools">
-        ${tools.map(([key, title]) => `
-          <a class="tool-card" href="${routeHref(key)}">
+        ${tools.map(([title, href]) => `
+          <a class="tool-card" href="${href}" target="_blank" rel="noopener noreferrer" aria-label="${title} (opens in a new tab)">
             <span class="tool-name">${title}</span>
           </a>`).join("")}
       </nav>
