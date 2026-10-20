@@ -288,6 +288,9 @@ for (const [parentKey, guides] of Object.entries(academyGuides)) {
 }
 
 const app = document.querySelector("#app");
+const savedRouteKey = "aivideoacademy:last-route";
+const savedScrollKey = "aivideoacademy:last-scroll";
+let routeStateSaveTimer;
 const cardSections = {
   "ai-tooling": "AI tools",
   "video-academy": "Academy guides",
@@ -301,6 +304,28 @@ function routeKey() {
 
 function routeHref(key) {
   return key === "home" ? "#/" : `#/${key}`;
+}
+
+function restoreRouteState() {
+  const savedHash = localStorage.getItem(savedRouteKey);
+  const currentHash = window.location.hash;
+  const hash = currentHash && currentHash !== "#" ? currentHash : savedHash;
+  const key = hash?.replace(/^#\/?/, "").split("/")[0] || "home";
+
+  if (!pages[key]) {
+    return false;
+  }
+
+  if (!currentHash || currentHash === "#") {
+    window.location.hash = hash || routeHref("home");
+  }
+
+  return Boolean(currentHash || savedHash);
+}
+
+function saveRouteState() {
+  localStorage.setItem(savedRouteKey, window.location.hash || routeHref("home"));
+  localStorage.setItem(savedScrollKey, String(window.scrollY));
 }
 
 function cardMarkup([key, title, description, icon], index) {
@@ -502,4 +527,26 @@ function render() {
 
 window.addEventListener("hashchange", render);
 window.addEventListener("DOMContentLoaded", render);
+window.addEventListener("hashchange", saveRouteState);
+window.addEventListener("pagehide", saveRouteState);
+window.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    saveRouteState();
+  }
+});
+window.addEventListener("scroll", () => {
+  window.clearTimeout(routeStateSaveTimer);
+  routeStateSaveTimer = window.setTimeout(saveRouteState, 150);
+}, { passive: true });
+
+const shouldRestoreScroll = restoreRouteState();
+const savedScroll = shouldRestoreScroll ? Number(localStorage.getItem(savedScrollKey)) : 0;
 render();
+if (Number.isFinite(savedScroll) && savedScroll > 0) {
+  window.requestAnimationFrame(() => {
+    window.scrollTo(0, savedScroll);
+    saveRouteState();
+  });
+} else {
+  saveRouteState();
+}
