@@ -324,7 +324,12 @@ function restoreRouteState() {
 }
 
 function saveRouteState() {
-  localStorage.setItem(savedRouteKey, window.location.hash || routeHref("home"));
+  const hash = window.location.hash;
+  if (hash && hash !== "#") {
+    localStorage.setItem(savedRouteKey, hash);
+  } else if (!localStorage.getItem(savedRouteKey)) {
+    localStorage.setItem(savedRouteKey, routeHref("home"));
+  }
   localStorage.setItem(savedScrollKey, String(window.scrollY));
 }
 
