@@ -306,8 +306,25 @@ function routeHref(key) {
   return key === "home" ? "#/" : `#/${key}`;
 }
 
+function readSavedState(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    console.error("Unable to read saved navigation state.", error);
+    return null;
+  }
+}
+
+function writeSavedState(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.error("Unable to save navigation state.", error);
+  }
+}
+
 function restoreRouteState() {
-  const savedHash = localStorage.getItem(savedRouteKey);
+  const savedHash = readSavedState(savedRouteKey);
   const currentHash = window.location.hash;
   const hash = currentHash && currentHash !== "#" ? currentHash : savedHash;
   const key = hash?.replace(/^#\/?/, "").split("/")[0] || "home";
@@ -326,11 +343,11 @@ function restoreRouteState() {
 function saveRouteState() {
   const hash = window.location.hash;
   if (hash && hash !== "#") {
-    localStorage.setItem(savedRouteKey, hash);
-  } else if (!localStorage.getItem(savedRouteKey)) {
-    localStorage.setItem(savedRouteKey, routeHref("home"));
+    writeSavedState(savedRouteKey, hash);
+  } else if (!readSavedState(savedRouteKey)) {
+    writeSavedState(savedRouteKey, routeHref("home"));
   }
-  localStorage.setItem(savedScrollKey, String(window.scrollY));
+  writeSavedState(savedScrollKey, String(window.scrollY));
 }
 
 function cardMarkup([key, title, description, icon], index) {
@@ -545,7 +562,7 @@ window.addEventListener("scroll", () => {
 }, { passive: true });
 
 const shouldRestoreScroll = restoreRouteState();
-const savedScroll = shouldRestoreScroll ? Number(localStorage.getItem(savedScrollKey)) : 0;
+const savedScroll = shouldRestoreScroll ? Number(readSavedState(savedScrollKey)) : 0;
 render();
 if (Number.isFinite(savedScroll) && savedScroll > 0) {
   window.requestAnimationFrame(() => {
